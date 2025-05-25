@@ -1,0 +1,53 @@
+from flask import Flask, request, send_file, jsonify
+import fitz  # PyMuPDF
+import os
+import tempfile
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__)
+
+# Allowed file extensions
+ALLOWED_EXTENSIONS = {'pdf', 'docx', 'jpg', 'jpeg', 'png'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/')
+def index():
+    return "PDF Converter API is running!"
+
+# PDF to JPG (Extract images as JPG)
+@app.route('/pdf-to-jpg', methods=['POST'])
+def pdf_to_jpg():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '' or not allowed_file(file.filename):
+        return jsonify({'error': 'No selected file or wrong type'}), 400
+
+    filename = secure_filename(file.filename)
+    temp_dir = tempfile.mkdtemp()
+    pdf_path = os.path.join(temp_dir, filename)
+    file.save(pdf_path)
+
+    try:
+        doc = fitz.open(pdf_path)
+        img_files = []
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            pix = page.get_pixmap()
+            img_path = os.path.join(temp_dir, f"page_{page_num + 1}.jpg")
+            pix.save(img_path)
+            img_files.append(img_path)
+
+        # For demo: return zip of images or first image
+        # Here, we return first image only for simplicity
+        return send_file(img_files[0], mimetype='image/jpeg', as_attachment=True, download_name='page1.jpg')
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        # Cleanup files after sending (optional here)
+        pass
+
+if __name__ == '__main__':
+    app.run(debug=True)
